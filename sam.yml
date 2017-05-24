@@ -56,16 +56,21 @@ Resources:
             type: object
             required:
               - partner
-              - email
+              - phone_number
               - sent_at
               - name
               - message
             properties:
               conversation_id:
                 type: string
+              origin:
+                type: string
+                enum:
+                  - user
+                  - partner
               partner:
                 type: string
-              email:
+              phone_number:
                 type: string
               sent_at:
                 type: string
@@ -185,13 +190,16 @@ Resources:
                         "TableName": "${MessagesTable}",
                         "Item": {
                           "conversation_id": {
-                            "S": "$util.base64Encode($input.path('$.email') + $input.path('$.partner'))"
+                            "S": "$util.base64Encode($input.path('$.phone_number') + $input.path('$.partner'))"
+                          },
+                          "origin": {
+                            "S": "user"
                           },
                           "partner": {
                             "S": "$input.path('$.partner')"
                           },
-                          "email": {
-                            "S": "$input.path('$.email')"
+                          "phone_number": {
+                            "S": "$input.path('$.phone_number')"
                           },
                           "sent_at": {
                             "N": "$input.path('$.sent_at')"
@@ -315,11 +323,14 @@ Resources:
                           "conversation_id": {
                             "S": "$input.params('guid')"
                           },
+                          "origin": {
+                            "S": "partner"
+                          },
                           "partner": {
                             "S": "$input.path('$.partner')"
                           },
-                          "email": {
-                            "S": "$input.path('$.email')"
+                          "phone_number": {
+                            "S": "$input.path('$.phone_number')"
                           },
                           "sent_at": {
                             "N": "$input.path('$.sent_at')"
@@ -444,7 +455,7 @@ Resources:
                           }
                         },
                         "ExpressionAttributeNames": {
-                          "#p": "partner_id",
+                          "#p": "partner",
                           "#s": "sent_at"
                         }
                       }
@@ -463,8 +474,9 @@ Resources:
                             #foreach($item in $input.path('$.Items'))
                             {
                               "conversation_id": "$item.conversation_id.S",
-                              "partner": $item.partner_id.S,
-                              "email": $item.user_id.S,
+                              "origin": "$item.origin.S",
+                              "partner": $item.partner.S,
+                              "phone_number": $item.phone_number.S,
                               "sent_at": "$item.sent_at.N",
                               "message": "$item.message.S",
                               "name": "$item.name.S",
@@ -551,7 +563,7 @@ Resources:
       AttributeDefinitions:
         - AttributeName: conversation_id
           AttributeType: S
-        - AttributeName: partner_id
+        - AttributeName: partner
           AttributeType: S
         - AttributeName: sent_at
           AttributeType: N
@@ -563,10 +575,18 @@ Resources:
       GlobalSecondaryIndexes:
         - IndexName: ByPartnerId
           KeySchema:
-            - AttributeName: partner_id
+            - AttributeName: partner
               KeyType: HASH
             - AttributeName: sent_at
               KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes:
+              - origin
+              - phone_number
+              - message
+              - name
+              - meta
           ProvisionedThroughput:
             ReadCapacityUnits: 4
             WriteCapacityUnits: 2
@@ -580,9 +600,7 @@ Resources:
     Type: "AWS::Cognito::UserPool"
     Properties:
       AliasAttributes:
-        - email
-      AutoVerifiedAttributes:
-        - email
+        - phone_number
       Schema:
         - Name: custom:partner
           AttributeDataType: String

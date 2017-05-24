@@ -19,10 +19,6 @@ module.exports = {
         loader: ['babel-loader'],
         exclude: /node_modules/,
       },
-      {
-        test: /\.html$/,
-        loader: ['mustache?minify'],
-      },
     ],
   },
 };

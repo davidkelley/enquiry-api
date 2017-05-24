@@ -1,11 +1,9 @@
 import AWS from 'aws-sdk';
-import Joi from 'joi';
 
 import { DynamoDB, OK, ERROR } from 'node-lambda-events';
-import { AWS_REGION, USER_POOL_ID, MESSAGES_TABLE } from '../global';
-import Messenger from './messenger';
+import { AWS_REGION, USER_POOL_ID } from '../global';
 
-const QUERY = 'query';
+const PUBLISH = 'publish';
 
 const GET_USER = 'adminGetUser';
 
@@ -20,33 +18,39 @@ export default DynamoDB.wrap(class extends DynamoDB {
   }
 
   async publish(record) {
-    if (record.type !== 'CREATE') {
-      return true;
-    } else {
-      const message = record.newImage;
-      const messages = await this.thread(message.conversation_id);
+    const message = record.newImage;
+    let params = {};
+    if (record.type !== 'CREATE') return true;
+    if (message.origin === 'partner') {
+      const text = 'You have a new enquiry. Login to see it.';
       const partner = await this.partner(message.partner);
-      const messenger = new Messenger({ messages, partner });
-      await messenger.send();
+      params = { PhoneNumber: partner.phone_number, Message: text };
+    } else {
+      const text = `Reply from ${message.partner}: ${message.message}`;
+      params = { PhoneNumber: message.phone_number, Message: text };
     }
+    return await this.sns(PUBLISH, params);
   }
 
   async partner(Username) {
     const attrs = {};
     const params = { Username, UserPoolId: USER_POOL_ID };
     const { UserAttributes } = await this.cognito(GET_USER, params);
-    UserAttributes.each((obj) => { attrs[obj.Name] = obj.Value });
+    UserAttributes.each((obj) => { attrs[obj.Name] = obj.Value; });
     return attrs;
   }
 
-  async thread(id, from = 0) {
-    const params = {
-      TableName: MESSAGES_TABLE,
-      KeyConditionExpression: 'conversation_id = :c AND sent_at > :f',
-      ExpressionAttributeValues: { ':c': id, ':f': from },
-    };
-    const { Items } = await this.document(QUERY, params);
-    return Items;
+  sns(op, params) {
+    return new Promise((resolve, reject) => {
+      const sns = new AWS.SNS({ region: AWS_REGION });
+      sns[op](params, (err, resp) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(resp);
+        }
+      });
+    });
   }
 
   cognito(op, params) {
@@ -57,21 +61,6 @@ export default DynamoDB.wrap(class extends DynamoDB {
           reject(err);
         } else {
           resolve(resp);
-        }
-      });
-    });
-  }
-
-  document(op, params) {
-    return new Promise((resolve, reject) => {
-      const client = AWS.DynamoDB.DocumentClient({
-        service: new AWS.DynamoDB({ region: AWS_REGION }),
-      });
-      client[op](params, (err, data) => {
-        if (err) {
-          reject(err);
-        } else {
-          resolve(data);
         }
       });
     });

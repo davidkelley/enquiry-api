@@ -1,6 +1,6 @@
 {
-  "name": "bot",
+  "name": "notifier",
   "version": "0.0.0",
   "private": true,
-  "main": "./bot.js"
+  "main": "./notifier.js"
 }
