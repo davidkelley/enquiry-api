@@ -1,0 +1,661 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Transform: AWS::Serverless-2016-10-31
+
+Description: Enquiry API
+
+Parameters:
+
+  Stage:
+    Type: String
+    Description: The release stage for the functions
+    Default: Development
+
+Resources:
+
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName:
+        Ref: Stage
+      DefinitionBody:
+        swagger: "2.0"
+        info:
+          title:
+            Ref: Stage
+          version: 0.0.1
+        schemes:
+          - https
+        x-amazon-apigateway-request-validators:
+          all:
+            validateRequestBody: true
+            validateRequestParameters: true
+          body-only:
+            validateRequestBody: true
+            validateRequestParameters: false
+          params-only:
+            validateRequestBody: false
+            validateRequestParameters: true
+        parameters:
+          before:
+            name: before
+            in: query
+            description: find items before number
+            required: true
+            type: number
+            minimum: 0
+          after:
+            name: after
+            in: query
+            description: find items after number
+            required: true
+            type: number
+            minimum: 0
+        definitions:
+          Message:
+            type: object
+            required:
+              - partner
+              - email
+              - sent_at
+              - name
+              - message
+            properties:
+              conversation_id:
+                type: string
+              partner:
+                type: string
+              email:
+                type: string
+              sent_at:
+                type: string
+              name:
+                type: string
+              message:
+                type: string
+              meta:
+                type: object
+                properties:
+                  product_id:
+                    type: string
+                  state:
+                    type: string
+                    enum:
+                      - read
+                      - unread
+          Messages:
+            type: array
+            description: an array of messages
+            items:
+              $ref: "#/definitions/Message"
+          PartnerMessages:
+            type: object
+            description: an object containing conversation IDs and an array of messages
+            properties:
+              conversations:
+                type: array
+                items:
+                  type: string
+              messages:
+                $ref: "#/definitions/Messages"
+          Empty:
+            type: object
+            description: There is no schema
+            title: Empty Schema
+          Error:
+            type: object
+            title: Error Schema
+            description: There was an error processing the request
+            properties:
+              message:
+                type: string
+                description: The Amazon-generated or custom error message
+              type:
+                type: string
+                description: The type of error generated
+              __raw:
+                type: object
+                title: Raw Error
+                description: |
+                  This object contains the raw message sent from the
+                  underlying integration
+        paths:
+          /:
+            head:
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              responses:
+                "200":
+                  description: 200 response
+                  schema:
+                    $ref: "#/definitions/Empty"
+                  headers:
+                    X-Auth-Pool-Id:
+                      type: string
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.X-Auth-Pool:
+                        Fn::Base64:
+                          Fn::Sub: "${UserPool}.${UserWebClient}"
+                passthroughBehavior: when_no_match
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                type: mock
+            post:
+              x-amazon-apigateway-request-validator: body-only
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              parameters:
+                - name: Message
+                  in: body
+                  required: true
+                  schema:
+                    $ref: "#/definitions/Message"
+              responses:
+                "200":
+                  description: The Message has been accepted
+                  schema:
+                    $ref: "#/definitions/Empty"
+                "400":
+                  description: A 400 error occurred
+                  schema:
+                    $ref: "#/definitions/Error"
+                "500":
+                  description: A 500 error occurred
+                  schema:
+                    $ref: "#/definitions/Error"
+              x-amazon-apigateway-integration:
+                type: aws
+                credentials:
+                  Fn::GetAtt: [ApiGatewayExecutionRole, Arn]
+                httpMethod: POST
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:dynamodb:action/PutItem"
+                requestTemplates:
+                  application/json:
+                    Fn::Sub: |
+                      {
+                        "TableName": "${MessagesTable}",
+                        "Item": {
+                          "conversation_id": {
+                            "S": "$util.base64Encode($input.path('$.email') + $input.path('$.partner'))"
+                          },
+                          "partner": {
+                            "S": "$input.path('$.partner')"
+                          },
+                          "email": {
+                            "S": "$input.path('$.email')"
+                          },
+                          "sent_at": {
+                            "N": "$input.path('$.sent_at')"
+                          },
+                          "message": {
+                            "S": "$input.path('$.message')"
+                          },
+                          "name": {
+                            "S": "$input.path('$.name')"
+                          },
+                          "meta": {
+                            "M": {
+                              "state": {
+                                "S": "unread"
+                              },
+                              "product_id": {
+                                "S": "$input.path('$.meta.product_id')"
+                              }
+                            }
+                          }
+                        }
+                      }
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseTemplates:
+                      application/json: |
+                        {}
+                  4\d{2}:
+                    statusCode: "400"
+                    responseTemplates:
+                      application/json: |
+                        {
+                          "type" : "BadRequest",
+                          "message" : "Bad Request",
+                          "__raw": $input.body
+                        }
+                  5\d{2}:
+                    statusCode: "500"
+                    responseTemplates:
+                      application/x-amz-json-1.0: |
+                        {
+                          "type" : "InternalServerError",
+                          "message" : "There was an internal error",
+                          "__raw": $input.body
+                        }
+            options:
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              responses:
+                "200":
+                  description: 200 response
+                  schema:
+                    $ref: "#/definitions/Empty"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                passthroughBehavior: when_no_match
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                type: mock
+          /partner/conversations/{conversation_id}:
+            post:
+              x-amazon-apigateway-request-validator: body-only
+              x-amazon-apigateway-auth:
+                type: aws_iam
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              parameters:
+                - name: conversation_id
+                  in: path
+                  required: true
+                  type: string
+                - name: Message
+                  in: body
+                  required: true
+                  schema:
+                    $ref: "#/definitions/Message"
+              responses:
+                "200":
+                  description: The Message has been accepted
+                  schema:
+                    $ref: "#/definitions/Empty"
+                "400":
+                  description: A 400 error occurred
+                  schema:
+                    $ref: "#/definitions/Error"
+                "500":
+                  description: A 500 error occurred
+                  schema:
+                    $ref: "#/definitions/Error"
+              x-amazon-apigateway-integration:
+                type: aws
+                credentials:
+                  Fn::GetAtt: [ApiGatewayExecutionRole, Arn]
+                httpMethod: POST
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:dynamodb:action/PutItem"
+                requestTemplates:
+                  application/json:
+                    Fn::Sub: |
+                      {
+                        "TableName": "${MessagesTable}",
+                        "Item": {
+                          "conversation_id": {
+                            "S": "$input.params('guid')"
+                          },
+                          "partner": {
+                            "S": "$input.path('$.partner')"
+                          },
+                          "email": {
+                            "S": "$input.path('$.email')"
+                          },
+                          "sent_at": {
+                            "N": "$input.path('$.sent_at')"
+                          },
+                          "message": {
+                            "S": "$input.path('$.message')"
+                          },
+                          "name": {
+                            "S": "$input.path('$.name')"
+                          },
+                          "meta": {
+                            "M": {
+                              "state": {
+                                "S": "unread"
+                              },
+                              "product_id": {
+                                "S": "$input.path('$.meta.product_id')"
+                              }
+                            }
+                          }
+                        }
+                      }
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseTemplates:
+                      application/json: |
+                        {}
+                  4\d{2}:
+                    statusCode: "400"
+                    responseTemplates:
+                      application/json: |
+                        {
+                          "type" : "BadRequest",
+                          "message" : "Bad Request",
+                          "__raw": $input.body
+                        }
+                  5\d{2}:
+                    statusCode: "500"
+                    responseTemplates:
+                      application/x-amz-json-1.0: |
+                        {
+                          "type" : "InternalServerError",
+                          "message" : "There was an internal error",
+                          "__raw": $input.body
+                        }
+            options:
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              responses:
+                "200":
+                  description: 200 response
+                  schema:
+                    $ref: "#/definitions/Empty"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                passthroughBehavior: when_no_match
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                type: mock
+          /partner/conversations:
+            get:
+              x-amazon-apigateway-request-validator: params-only
+              x-amazon-apigateway-auth:
+                type: aws_iam
+              produces:
+                - application/json
+              parameters:
+                - $ref: "#/parameters/before"
+                - $ref: "#/parameters/after"
+              responses:
+                "200":
+                  description: A list of all messages
+                  schema:
+                    $ref: "#/definitions/PartnerMessages"
+                "400":
+                  description: A 400 error occurred
+                  schema:
+                    $ref: "#/definitions/Error"
+                "500":
+                  description: A 500 error occurred
+                  schema:
+                    $ref: "#/definitions/Error"
+              x-amazon-apigateway-integration:
+                type: aws
+                credentials:
+                  Fn::GetAtt: [ApiGatewayExecutionRole, Arn]
+                httpMethod: POST
+                uri:
+                  Fn::Sub: "arn:aws:apigateway:${AWS::Region}:dynamodb:action/Query"
+                requestTemplates:
+                  application/json:
+                    Fn::Sub: |
+                      {
+                        "TableName": "${MessagesTable}",
+                        "IndexName": "ByPartnerId"
+                        "FilterExpression": "#p = :p AND #s BETWEEN :sa AND :sb",
+                        "ExpressionAttributeValues": {
+                          ":p": {
+                            "S": "${IDENTITY_ID}"
+                          },
+                          ":sa": {
+                            "N": "$input.params('after')"
+                          },
+                          ":sb": {
+                            "N": "$input.params('before')"
+                          }
+                        },
+                        "ExpressionAttributeNames": {
+                          "#p": "partner_id",
+                          "#s": "sent_at"
+                        }
+                      }
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseTemplates:
+                      application/x-amz-json-1.0: |
+                        {
+                          "conversations": [
+                            #foreach($item in $input.path('$.Items'))
+                            "$item.conversation_id.S"#if($foreach.hasNext),#end
+                            #end
+                          ]
+                          "messages": [
+                            #foreach($item in $input.path('$.Items'))
+                            {
+                              "conversation_id": "$item.conversation_id.S",
+                              "partner": $item.partner_id.S,
+                              "email": $item.user_id.S,
+                              "sent_at": "$item.sent_at.N",
+                              "message": "$item.message.S",
+                              "name": "$item.name.S",
+                              "meta": {
+                                "state": "$item.meta.M.state.S",
+                                "product_id": "$item.meta.M.product_id.S"
+                              }
+                            }#if($foreach.hasNext),#end
+                            #end
+                          ]
+                        }
+                  4\d{2}:
+                    statusCode: "400"
+                    responseTemplates:
+                      application/x-amz-json-1.0: |
+                        {
+                          "type" : "BadRequest",
+                          "message" : "Bad Request",
+                          "__raw": $input.body
+                        }
+                  5\d{2}:
+                    statusCode: "500"
+                    responseTemplates:
+                      application/x-amz-json-1.0: |
+                        {
+                          "type" : "InternalServerError",
+                          "message" : "There was an internal error",
+                          "__raw": $input.body
+                        }
+            options:
+              consumes:
+                - application/json
+              produces:
+                - application/json
+              responses:
+                "200":
+                  description: 200 response
+                  schema:
+                    $ref: "#/definitions/Empty"
+                  headers:
+                    Access-Control-Allow-Origin:
+                      type: string
+                    Access-Control-Allow-Methods:
+                      type: string
+                    Access-Control-Allow-Headers:
+                      type: string
+              x-amazon-apigateway-integration:
+                responses:
+                  default:
+                    statusCode: "200"
+                    responseParameters:
+                      method.response.header.Access-Control-Allow-Methods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+                      method.response.header.Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token'"
+                      method.response.header.Access-Control-Allow-Origin: "'*'"
+                passthroughBehavior: when_no_match
+                requestTemplates:
+                  application/json: "{\"statusCode\": 200}"
+                type: mock
+
+  Notifier:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: index.Notifier
+      Runtime: nodejs6.10
+      CodeUri: ./out
+      Timeout: 10
+      Environment:
+        Variables:
+          USER_POOL_ID:
+            Ref: UserPool
+      Events:
+        DynamoDB:
+          Type: DynamoDB
+          Properties:
+            Stream:
+              Fn::GetAtt: [MessagesTable, StreamArn]
+            StartingPosition: LATEST
+            BatchSize: 2
+
+  MessagesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: conversation_id
+          AttributeType: S
+        - AttributeName: partner_id
+          AttributeType: S
+        - AttributeName: sent_at
+          AttributeType: N
+      KeySchema:
+        - AttributeName: conversation_id
+          KeyType: HASH
+        - AttributeName: sent_at
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: ByPartnerId
+          KeySchema:
+            - AttributeName: partner_id
+              KeyType: HASH
+            - AttributeName: sent_at
+              KeyType: RANGE
+          ProvisionedThroughput:
+            ReadCapacityUnits: 4
+            WriteCapacityUnits: 2
+      ProvisionedThroughput:
+        ReadCapacityUnits: 4
+        WriteCapacityUnits: 2
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  UserPool:
+    Type: "AWS::Cognito::UserPool"
+    Properties:
+      AliasAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Schema:
+        - Name: custom:partner
+          AttributeDataType: String
+          Mutable: false
+          Required: true
+
+  UserWebClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId:
+        Ref: UserPool
+
+  UserGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      UserPoolId:
+        Ref: UserPool
+      Precedence: 0
+      GroupName: users
+      RoleArn:
+        Fn::GetAtt: [UserGroupRole, Arn]
+
+  UserGroupRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              ForAnyValue:StringLike:
+                cognito-identity.amazonaws.com:amr:
+                  Ref: UserPool
+
+  ApiGatewayExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: sts:AssumeRole
+
+  ApiGatewayExecutionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: APIPermissions
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:*
+            Resource:
+              - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MessagesTable}
+
+  ApiGatewayUserPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: UserAPIPermissions
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: execute-api:Invoke
+            Resource:
+              - Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/${Stage}/*"
+      Roles:
+        - Ref: UserGroupRole
