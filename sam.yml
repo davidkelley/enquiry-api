@@ -20,6 +20,9 @@ Resources:
         Ref: Stage
       DefinitionBody:
         swagger: "2.0"
+        info:
+          title:
+            Ref: Stage
         schemes:
           - https
         securityDefinitions:
@@ -153,7 +156,7 @@ Resources:
                     responseParameters:
                       method.response.header.X-Auth-Pool:
                         Fn::Base64:
-                          Fn::Sub: "${UserPool}.${UserWebClient}"
+                          Fn::Sub: "'${UserPool}.${UserWebClient}'"
                 passthroughBehavior: when_no_match
                 requestTemplates:
                   application/json: "{\"statusCode\": 200}"

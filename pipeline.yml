@@ -270,6 +270,7 @@ Resources:
                   - 'sns:*'
                   - 'events:*'
                   - 'cognito-idp:*'
+                  - 'apigateway:*'
                 Effect: Allow
                 Resource: '*'
 
