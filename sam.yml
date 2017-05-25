@@ -416,8 +416,8 @@ Resources:
           /partner/conversations:
             get:
               x-amazon-apigateway-request-validator: params-only
-              x-amazon-apigateway-auth:
-                type: aws_iam
+              security:
+                - user_pool: []
               produces:
                 - application/json
               parameters:
@@ -452,7 +452,7 @@ Resources:
                         "FilterExpression": "#p = :p AND #s BETWEEN :sa AND :sb",
                         "ExpressionAttributeValues": {
                           ":p": {
-                            "S": "${IDENTITY_ID}"
+                            "S": "$context.authorizer.claims.username"
                           },
                           ":sa": {
                             "N": "$input.params('after')"
