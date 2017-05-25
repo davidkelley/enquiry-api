@@ -132,7 +132,7 @@ Resources:
                   This object contains the raw message sent from the
                   underlying integration
         paths:
-          /user:
+          /:
             head:
               consumes:
                 - application/json
@@ -144,7 +144,7 @@ Resources:
                   schema:
                     $ref: "#/definitions/Empty"
                   headers:
-                    X-Auth-Pool-Id:
+                    X-Auth-Pool:
                       type: string
               x-amazon-apigateway-integration:
                 responses:
