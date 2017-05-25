@@ -147,16 +147,19 @@ Resources:
                   schema:
                     $ref: "#/definitions/Empty"
                   headers:
-                    X-Auth-Pool:
+                    X-Auth-Pool-Id:
+                      type: string
+                    X-Auth-Pool-Client:
                       type: string
               x-amazon-apigateway-integration:
                 responses:
                   default:
                     statusCode: "200"
                     responseParameters:
-                      method.response.header.X-Auth-Pool:
-                        Fn::Base64:
-                          Fn::Sub: "'${UserPool}.${UserWebClient}'"
+                      method.response.header.X-Auth-Pool-Id:
+                        Fn::Sub: "'${UserPool}'"
+                      method.response.header.X-Auth-Pool-Client:
+                        Fn::Sub: "'${UserWebClient}'"  
                 passthroughBehavior: when_no_match
                 requestTemplates:
                   application/json: "{\"statusCode\": 200}"
