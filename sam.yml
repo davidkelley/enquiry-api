@@ -14,6 +14,10 @@ Parameters:
 Resources:
 
   ApiGateway:
+    DependsOn:
+      - MessagesTable
+      - UserPool
+      - Notifier
     Type: AWS::Serverless::Api
     Properties:
       StageName:
@@ -26,6 +30,16 @@ Resources:
           version: 0.0.1
         schemes:
           - https
+        securityDefinitions:
+          user_pool:
+            type: "apiKey"
+            name: "Authorization"
+            in: "header"
+            x-amazon-apigateway-authtype: "cognito_user_pools"
+            x-amazon-apigateway-authorizer:
+              type: "cognito_user_pools"
+              providerARNs:
+                - Fn::GetAtt: [UserPool, Arn]
         x-amazon-apigateway-request-validators:
           all:
             validateRequestBody: true
@@ -278,8 +292,8 @@ Resources:
           /partner/conversations/{conversation_id}:
             post:
               x-amazon-apigateway-request-validator: body-only
-              x-amazon-apigateway-auth:
-                type: aws_iam
+              security:
+                - user_pool: []
               consumes:
                 - application/json
               produces:
@@ -321,13 +335,13 @@ Resources:
                         "TableName": "${MessagesTable}",
                         "Item": {
                           "conversation_id": {
-                            "S": "$input.params('guid')"
+                            "S": "$input.params('conversation_id')"
                           },
                           "origin": {
                             "S": "partner"
                           },
                           "partner": {
-                            "S": "$input.path('$.partner')"
+                            "S": "$context.authorizer.claims.username"
                           },
                           "phone_number": {
                             "S": "$input.path('$.phone_number')"
@@ -639,6 +653,20 @@ Resources:
                 cognito-identity.amazonaws.com:amr:
                   Ref: UserPool
 
+  UserGroupPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: UserAPIPermissions
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action: execute-api:Invoke
+            Resource:
+              - Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/${Stage}/*"
+      Roles:
+        - Ref: UserGroupRole
+
   ApiGatewayExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -663,17 +691,3 @@ Resources:
               - dynamodb:*
             Resource:
               - Fn::Sub: arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${MessagesTable}
-
-  ApiGatewayUserPolicy:
-    Type: AWS::IAM::Policy
-    Properties:
-      PolicyName: UserAPIPermissions
-      PolicyDocument:
-        Version: 2012-10-17
-        Statement:
-          - Effect: Allow
-            Action: execute-api:Invoke
-            Resource:
-              - Fn::Sub: "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:*/${Stage}/*"
-      Roles:
-        - Ref: UserGroupRole

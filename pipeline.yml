@@ -269,7 +269,6 @@ Resources:
                   - 'dynamodb:*'
                   - 'sns:*'
                   - 'events:*'
-                  - 'lex:*'
                 Effect: Allow
                 Resource: '*'
 
