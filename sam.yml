@@ -22,16 +22,16 @@ Resources:
         swagger: "2.0"
         schemes:
           - https
-        # securityDefinitions:
-        #   user_pool:
-        #     type: "apiKey"
-        #     name: "Authorization"
-        #     in: "header"
-        #     x-amazon-apigateway-authtype: "cognito_user_pools"
-        #     x-amazon-apigateway-authorizer:
-        #       type: "cognito_user_pools"
-        #       providerARNs:
-        #         - Fn::GetAtt: [UserPool, Arn]
+        securityDefinitions:
+          user_pool:
+            type: "apiKey"
+            name: "Authorization"
+            in: "header"
+            x-amazon-apigateway-authtype: "cognito_user_pools"
+            x-amazon-apigateway-authorizer:
+              type: "cognito_user_pools"
+              providerARNs:
+                - Fn::GetAtt: [UserPool, Arn]
         x-amazon-apigateway-request-validators:
           all:
             validateRequestBody: true
@@ -132,7 +132,7 @@ Resources:
                   This object contains the raw message sent from the
                   underlying integration
         paths:
-          /:
+          /user:
             head:
               consumes:
                 - application/json
@@ -151,9 +151,9 @@ Resources:
                   default:
                     statusCode: "200"
                     responseParameters:
-                      method.response.header.X-Auth-Pool: "'test'"
-                        # Fn::Base64:
-                        #   Fn::Sub: "${UserPool}.${UserWebClient}"
+                      method.response.header.X-Auth-Pool:
+                        Fn::Base64:
+                          Fn::Sub: "${UserPool}.${UserWebClient}"
                 passthroughBehavior: when_no_match
                 requestTemplates:
                   application/json: "{\"statusCode\": 200}"
