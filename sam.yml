@@ -608,11 +608,6 @@ Resources:
     Properties:
       AliasAttributes:
         - phone_number
-      Schema:
-        - Name: custom:partner
-          AttributeDataType: String
-          Mutable: false
-          Required: true
 
   UserWebClient:
     Type: AWS::Cognito::UserPoolClient
